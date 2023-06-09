@@ -57,6 +57,12 @@ form {
   color: #ffeb3b;
 }
 
+@media(min-width: 900px) {
+  .mobile-nav {
+    display: none;
+  }
+}
+
 .mobile-nav {
   width: 30rem;
   height: 100vh;
