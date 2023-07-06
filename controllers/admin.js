@@ -1,18 +1,35 @@
+const { validationResult } = require('express-validator');
+
 const Product = require('../models/product');
+
 
 exports.getAddProduct = (req, res, next) => {
   res.render('admin/edit-product', {
     pageTitle: 'Add Product',
     path: '/admin/add-product',
-    editing: false
+    editing: false,
+    hasError: false,
+    errorMessage: null
   });
 };
 
 exports.postAddProduct = (req, res, next) => {
-  const title = req.body.title;
-  const imageUrl = req.body.imageUrl;
-  const price = req.body.price;
-  const description = req.body.description;
+
+  const { title, description, price, imageUrl } = req.body
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res
+      .status(422)
+      .render('admin/edit-product', {
+        path: '/admin/edit-product',
+        pageTitle: 'Edit Product',
+        editing: false,
+        hasError: true,
+        errorMessage: errors.array()[0].msg,
+        product: { title, description, price, imageUrl }
+      });
+  }
+
   const product = new Product({
     title: title,
     price: price,
@@ -47,6 +64,8 @@ exports.getEditProduct = (req, res, next) => {
         pageTitle: 'Edit Product',
         path: '/admin/edit-product',
         editing: editMode,
+        hasError: false,
+        errorMessage: null,
         product: product
       });
     })
@@ -59,6 +78,20 @@ exports.postEditProduct = (req, res, next) => {
   const updatedPrice = req.body.price;
   const updatedImageUrl = req.body.imageUrl;
   const updatedDesc = req.body.description;
+
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res
+      .status(422)
+      .render('admin/edit-product', {
+        path: '/admin/edit-product',
+        pageTitle: 'Edit Product',
+        editing: true,
+        hasError: true,
+        errorMessage: errors.array()[0].msg,
+        product: { title: updatedTitle, description: updatedDesc, price: updatedPrice, imageUrl: updatedImageUrl, _id: prodId }
+      });
+  }
 
   Product.findById(prodId)
     .then(product => {
