@@ -1,18 +1,43 @@
+const fs = require('fs')
+const path = require('path');
+
+const PDFDocument = require('pdfkit')
+
 const Product = require('../models/product');
 const Order = require('../models/order');
 
+const ITEMS_PER_PAGE = 1;
+
 exports.getProducts = (req, res, next) => {
-  Product.find()
+  const page = +req.query.page || 1;
+  let totalItems;
+  Product
+    .find()
+    .countDocuments()
+    .then(numProducts => {
+      totalItems = numProducts
+      return Product
+        .find()
+        .skip((page - 1) * ITEMS_PER_PAGE)
+        .limit(ITEMS_PER_PAGE)
+    })
     .then(products => {
-      console.log(products);
       res.render('shop/product-list', {
         prods: products,
-        pageTitle: 'All Products',
-        path: '/products'
+        pageTitle: 'Products',
+        path: '/products',
+        currentPage: page,
+        hasNextPage: ITEMS_PER_PAGE * page < totalItems,
+        hasPreviousPage: page > 1,
+        nextPage: page + 1,
+        previousPage: page - 1,
+        lastPage: Math.ceil(totalItems / ITEMS_PER_PAGE)
       });
     })
     .catch(err => {
-      console.log(err);
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error)
     });
 };
 
@@ -26,20 +51,43 @@ exports.getProduct = (req, res, next) => {
         path: '/products'
       });
     })
-    .catch(err => console.log(err));
+    .catch(err => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error)
+    });
 };
 
 exports.getIndex = (req, res, next) => {
-  Product.find()
+  const page = +req.query.page || 1;
+  let totalItems;
+  Product
+    .find()
+    .countDocuments()
+    .then(numProducts => {
+      totalItems = numProducts
+      return Product
+        .find()
+        .skip((page - 1) * ITEMS_PER_PAGE)
+        .limit(ITEMS_PER_PAGE)
+    })
     .then(products => {
       res.render('shop/index', {
         prods: products,
         pageTitle: 'Shop',
-        path: '/'
+        path: '/',
+        currentPage: page,
+        hasNextPage: ITEMS_PER_PAGE * page < totalItems,
+        hasPreviousPage: page > 1,
+        nextPage: page + 1,
+        previousPage: page - 1,
+        lastPage: Math.ceil(totalItems / ITEMS_PER_PAGE)
       });
     })
     .catch(err => {
-      console.log(err);
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error)
     });
 };
 
@@ -49,13 +97,18 @@ exports.getCart = (req, res, next) => {
     .execPopulate()
     .then(user => {
       const products = user.cart.items;
+      console.log(products)
       res.render('shop/cart', {
         path: '/cart',
         pageTitle: 'Your Cart',
         products: products
       });
     })
-    .catch(err => console.log(err));
+    .catch(err => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error)
+    });
 };
 
 exports.postCart = (req, res, next) => {
@@ -77,7 +130,11 @@ exports.postCartDeleteProduct = (req, res, next) => {
     .then(result => {
       res.redirect('/cart');
     })
-    .catch(err => console.log(err));
+    .catch(err => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error)
+    });
 };
 
 exports.postOrder = (req, res, next) => {
@@ -103,7 +160,11 @@ exports.postOrder = (req, res, next) => {
     .then(() => {
       res.redirect('/orders');
     })
-    .catch(err => console.log(err));
+    .catch(err => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error)
+    });
 };
 
 exports.getOrders = (req, res, next) => {
@@ -115,5 +176,54 @@ exports.getOrders = (req, res, next) => {
         orders: orders
       });
     })
-    .catch(err => console.log(err));
+    .catch(err => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error)
+    });
 };
+
+exports.getInvoice = (req, res, next) => {
+  const { orderId } = req.params;
+  Order.findById(orderId)
+    .then((order) => {
+      if (!order) {
+        return next(new Error('no order found'));
+      }
+      if (order.user.userId.toString() !== req.user._id.toString()) {
+        return next(new Error('Unauthorized access to order'));
+      }
+      const invoiceName = 'invoice-' + orderId + '.pdf';
+      invoicePath = path.join('data', 'invoices', invoiceName);
+
+      const pdfDoc = new PDFDocument();
+      pdfDoc.pipe(fs.createWriteStream(invoicePath));
+      pdfDoc.pipe(res);
+      pdfDoc.fontSize(26).text('Invoice', {
+        underline: true
+      });
+
+      pdfDoc.text('----------------------');
+      let totalprice = 0
+      order.products.forEach(prod => {
+        totalprice += prod.quantity * prod.product.price
+        pdfDoc.fontSize(12).text(prod.product.title + ' - ' + prod.quantity + ' x ' + '$' + prod.product.price)
+      })
+      pdfDoc.text('........')
+      pdfDoc.fontSize(14).text('Total Price: ' + totalprice)
+      pdfDoc.end();
+
+      // fs.readFile(invoicePath, (err, data) => {
+      //   if (err) {
+      //     return next(err)
+      //   }
+      //   res.setHeader('Content-Type', 'application/pdf');
+      //   res.setHeader('Content-Disposition', 'attatchment; filename="' + invoiceName + '"');
+      //   res.send(data)
+      // })
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'filename="' + invoiceName + '"');
+    })
+    .catch(err => next(err))
+
+}
